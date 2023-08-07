@@ -32,7 +32,7 @@ class LinalgOnTensorsBackendTestConfig(TestConfig):
         example_args = convert_annotations_to_placeholders(program.forward)
         module = torch_mlir.compile(
             program, example_args, output_type="linalg-on-tensors")
-
+        print(module)
         return self.backend.compile(module)
 
 

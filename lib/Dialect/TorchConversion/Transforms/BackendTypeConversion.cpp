@@ -30,6 +30,10 @@ setupValueTensorToBuiltinTensorConversion(ConversionTarget &target,
                     TorchConversion::FromBuiltinTensorOp>();
   typeConverter.addConversion(
       [](Torch::ValueTensorType type) -> std::optional<Type> {
+        llvm::outs() << "START" <<'\n';
+        llvm::outs() << type <<'\n';
+        llvm::outs() << type.toBuiltinTensor() <<'\n';
+        llvm::outs() << "END" <<'\n';
         return type.toBuiltinTensor();
       });
   typeConverter.addTargetMaterialization([](OpBuilder &builder, TensorType type,
@@ -161,7 +165,15 @@ static void setupTorchGeneratorToI64Conversion(ConversionTarget &target,
 
 void mlir::torch::TorchConversion::setupBackendTypeConversion(
     ConversionTarget &target, TypeConverter &typeConverter) {
+  setupTorchBoolToI1Conversion(target, typeConverter);
+  setupTorchIntToI64Conversion(target, typeConverter);
+  setupTorchFloatToF64Conversion(target, typeConverter);
+  setupTorchGeneratorToI64Conversion(target, typeConverter);
   setupValueTensorToBuiltinTensorConversion(target, typeConverter);
+}
+
+void mlir::torch::TorchConversion::setupBackendTypeConversionV2(
+    ConversionTarget &target, TypeConverter &typeConverter) {
   setupTorchBoolToI1Conversion(target, typeConverter);
   setupTorchIntToI64Conversion(target, typeConverter);
   setupTorchFloatToF64Conversion(target, typeConverter);

@@ -573,6 +573,7 @@ STABLEHLO_PASS_SET = {
     "NativeLayerNormModule_basic",
     "OneHotModule_basic",
     "PrimsConvertElementTypeModule_basic",
+    "ReshapeToDtypeUint8Module_basic",
     "ReduceFrobeniusNormKeepDimModule_basic",
     "ReduceSumDimIntListElementTypeBoolModule_basic",
     "ReduceSumElementTypeBoolModule_basic",

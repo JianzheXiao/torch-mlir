@@ -31,7 +31,7 @@ class StablehloBackendTestConfig(TestConfig):
     def compile(self, program: torch.nn.Module) -> Any:
         example_args = convert_annotations_to_placeholders(program.forward)
         module = torch_mlir.compile(program, example_args, output_type="stablehlo")
-
+        print(module)
         return self.backend.compile(module)
 
     def run(self, artifact: Any, trace: Trace) -> Trace:

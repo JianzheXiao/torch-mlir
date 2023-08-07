@@ -402,8 +402,13 @@ static Type convertDtypeToBuiltinElementType(MLIRContext *context, Type dtype) {
   if (auto floatType = dtype.dyn_cast<mlir::FloatType>()) {
     return dtype;
   } else if (auto integerType = dtype.dyn_cast<IntegerType>()) {
-    return IntegerType::get(context, integerType.getWidth(),
-                            IntegerType::Signless);
+    if (integerType.getWidth() == 1)
+      return IntegerType::get(context, integerType.getWidth(),
+                              IntegerType::Signless);
+    else
+      return IntegerType::get(context, integerType.getWidth(),
+                              integerType.isUnsigned() ? IntegerType::Unsigned
+                                                       : IntegerType::Signless);
   } else if (auto complexType = dtype.dyn_cast<mlir::ComplexType>()) {
     // torch-complex types add the precision of the real and imag values to
     // get the final precision i.e., if the real and imag value is of `float`

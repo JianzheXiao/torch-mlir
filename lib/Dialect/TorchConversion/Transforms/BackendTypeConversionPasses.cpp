@@ -17,9 +17,14 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h"
 #include "torch-mlir/Dialect/TorchConversion/Transforms/BackendTypeConversion.h"
 #include "torch-mlir/Dialect/TorchConversion/Transforms/Passes.h"
+#include "torch-mlir/Dialect/Torch/Utils/Utils.h"
+#ifdef TORCH_MLIR_ENABLE_STABLEHLO
+#include "torch-mlir/Conversion/TorchToStablehlo/TorchToStablehlo.h"
+#endif
 
 using namespace mlir;
 using namespace mlir::torch;
+using namespace mlir::torch::Torch;
 using namespace mlir::torch::TorchConversion;
 
 //===----------------------------------------------------------------------===//
@@ -34,6 +39,47 @@ struct FuncBackendTypeConversionPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TorchConversion::TorchConversionDialect>();
   }
+
+  static void
+  setupValueTensorToBuiltinTensorConversion(ConversionTarget &target,
+                                            TypeConverter &typeConverter) {
+    target.addLegalOp<TorchConversion::ToBuiltinTensorOp,
+                      TorchConversion::FromBuiltinTensorOp>();
+    typeConverter.addConversion(
+        [](Torch::ValueTensorType type) -> std::optional<Type> {
+          llvm::outs() << type <<'\n';
+          if (auto integerType = type.getDtype().dyn_cast<IntegerType>()) {
+            if (integerType.isUnsigned()) {
+              llvm::outs() << "OVER2" <<'\n';
+              llvm::outs() << RankedTensorType::get(makeShapeLLVMCompatible(type.getSizes()), IntegerType::get(type.getContext(), integerType.getWidth(), IntegerType::Unsigned)) <<'\n';
+              return RankedTensorType::get(makeShapeLLVMCompatible(type.getSizes()), IntegerType::get(type.getContext(), integerType.getWidth(), IntegerType::Unsigned));
+            }
+          }
+          return type.toBuiltinTensor();
+        });
+    typeConverter.addTargetMaterialization([](OpBuilder &builder, TensorType type,
+                                              ValueRange inputs,
+                                              Location loc) -> Value {
+      assert(inputs.size() == 1);
+      if (!inputs[0].getType().isa<Torch::BaseTensorType>())
+        return {};
+      llvm::outs() << inputs[0].getType() <<'\n';   
+      llvm::outs() << "OVER1" <<'\n';   
+      return builder.create<ToBuiltinTensorOp>(loc, inputs[0]);
+    });
+    auto sourceMaterialization = [](OpBuilder &builder,
+                                    Torch::ValueTensorType type,
+                                    ValueRange inputs, Location loc) -> Value {
+      assert(inputs.size() == 1);
+      assert(inputs[0].getType().isa<TensorType>());
+      llvm::outs() << inputs[0].getType() <<'\n';   
+      llvm::outs() << "OVER" <<'\n';   
+      return builder.create<FromBuiltinTensorOp>(loc, type, inputs[0]);
+    };
+    typeConverter.addSourceMaterialization(sourceMaterialization);
+    typeConverter.addArgumentMaterialization(sourceMaterialization);
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
     auto *context = &getContext();
@@ -42,8 +88,13 @@ struct FuncBackendTypeConversionPass
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
     typeConverter.addConversion([](Type type) { return type; });
+    #ifdef TORCH_MLIR_ENABLE_STABLEHLO
+    TorchConversion::setupBackendTypeConversionV2(target, typeConverter);
+    setupValueTensorToBuiltinTensorConversion(target, typeConverter);
+    #else
     TorchConversion::setupBackendTypeConversion(target, typeConverter);
-
+    #endif
+    llvm::outs() << "GERE" <<'\n';
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
         patterns, typeConverter);
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
@@ -132,7 +183,7 @@ struct FinalizingBackendTypeConversionPass
 
     typeConverter.addConversion([](Type type) { return type; });
     TorchConversion::setupBackendTypeConversion(target, typeConverter);
-
+    llvm::outs() << "GERE1" <<'\n';
     // Mark materializations as illegal in this pass (since we are finalizing)
     // and add patterns that eliminate them.
     setupFinalization<ToBuiltinTensorOp, FromBuiltinTensorOp, FromI1Op, ToI1Op,

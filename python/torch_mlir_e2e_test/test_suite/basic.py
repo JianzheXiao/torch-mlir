@@ -4321,6 +4321,27 @@ def AtenComplexViewModule_basic(module, tu: TestUtils):
 # ==============================================================================
 
 
+class ReshapeToDtypeUint8Module(torch.nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    @export
+    @annotate_args([
+        None,
+        ([1], torch.uint8, True),
+    ])
+    def forward(self, x):
+        return x.to(torch.float32)
+
+@register_test_case(module_factory=lambda: ReshapeToDtypeUint8Module())
+def ReshapeToDtypeUint8Module_basic(module, tu: TestUtils):
+    module.forward(tu.randint(1, low=128, high=256, dtype=torch.uint8))
+
+
+# ==============================================================================
+
+
 class Add_Module(torch.nn.Module):
 
     def __init__(self):

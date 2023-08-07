@@ -23,11 +23,13 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "torch-mlir/Dialect/Torch/Utils/Utils.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
+#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h"
 #include "torch-mlir/Dialect/TorchConversion/Transforms/BackendTypeConversion.h"
 
 using namespace mlir;
 using namespace mlir::torch;
 using namespace mlir::torch::Torch;
+using namespace mlir::torch::TorchConversion;
 
 namespace {
 
@@ -38,6 +40,44 @@ public:
   ConvertTorchToStablehlo(bool enableStaticShape, bool enableI32Index) {
     this->enableStaticShape = enableStaticShape;
     this->enableI32Index = enableI32Index;
+  }
+
+  static void
+  setupValueTensorToBuiltinTensorConversion(ConversionTarget &target,
+                                            TypeConverter &typeConverter) {
+    target.addLegalOp<TorchConversion::ToBuiltinTensorOp,
+                      TorchConversion::FromBuiltinTensorOp>();
+    typeConverter.addConversion(
+        [](Torch::ValueTensorType type) -> std::optional<Type> {
+          llvm::outs() << type <<'\n';
+          if (auto integerType = type.getDtype().dyn_cast<IntegerType>()) {
+            if (integerType.isUnsigned()) {
+              llvm::outs() << "OVER2" <<'\n';
+              llvm::outs() << RankedTensorType::get(makeShapeLLVMCompatible(type.getSizes()), IntegerType::get(type.getContext(), integerType.getWidth(), IntegerType::Unsigned)) <<'\n';
+              return RankedTensorType::get(makeShapeLLVMCompatible(type.getSizes()), IntegerType::get(type.getContext(), integerType.getWidth(), IntegerType::Unsigned));
+            }
+          }
+          return type.toBuiltinTensor();
+        });
+    typeConverter.addTargetMaterialization([](OpBuilder &builder, TensorType type,
+                                              ValueRange inputs,
+                                              Location loc) -> Value {
+      assert(inputs.size() == 1);
+      if (!inputs[0].getType().isa<Torch::BaseTensorType>())
+        return {};
+      return builder.create<ToBuiltinTensorOp>(loc, inputs[0]);
+    });
+    auto sourceMaterialization = [](OpBuilder &builder,
+                                    Torch::ValueTensorType type,
+                                    ValueRange inputs, Location loc) -> Value {
+      assert(inputs.size() == 1);
+      assert(inputs[0].getType().isa<TensorType>());
+      llvm::outs() << inputs[0].getType() <<'\n';   
+      llvm::outs() << "OVER" <<'\n';   
+      return builder.create<FromBuiltinTensorOp>(loc, type, inputs[0]);
+    };
+    typeConverter.addSourceMaterialization(sourceMaterialization);
+    typeConverter.addArgumentMaterialization(sourceMaterialization);
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -57,8 +97,8 @@ public:
 
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type type) { return type; });
-    TorchConversion::setupBackendTypeConversion(target, typeConverter);
-
+    TorchConversion::setupBackendTypeConversionV2(target, typeConverter);
+    setupValueTensorToBuiltinTensorConversion(target, typeConverter);
     RewritePatternSet patterns(context);
 
     torch_to_stablehlo::TorchToStablehloOptions options{
